@@ -1,0 +1,1281 @@
+-- MENU UNIFICADO | HUB + SEGUIR JOGADORES + SERVER SAVER + ZOAR
+-- Menu: Y | ESP: T | Fly: F | Noclip: N | Zoar: Z
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local TS = game:GetService("TweenService")
+local TeleportService = game:GetService("TeleportService")
+local lp = Players.LocalPlayer
+
+repeat task.wait(0.1) until lp.Character
+
+-- ===================== SALVAR TECLA =====================
+local SAVE_FILE = "hubmenu_key.txt"
+local SERVER_FILE = "saved_server.txt"
+local MenuKey = Enum.KeyCode.Y
+
+local function saveKey(key) pcall(function() writefile(SAVE_FILE, key.Name) end) end
+local function loadKey()
+    local ok, data = pcall(function() return readfile(SAVE_FILE) end)
+    if ok and data and data ~= "" then
+        local ok2, k = pcall(function() return Enum.KeyCode[data] end)
+        if ok2 and k then MenuKey = k end
+    end
+end
+loadKey()
+
+local function saveServer(placeId, jobId)
+    pcall(function() writefile(SERVER_FILE, placeId .. "|" .. jobId) end)
+end
+local function loadServer()
+    local ok, data = pcall(function() return readfile(SERVER_FILE) end)
+    if ok and data and data ~= "" then
+        local placeId, jobId = data:match("^(.+)|(.+)$")
+        if placeId and jobId then return placeId, jobId end
+    end
+    return nil, nil
+end
+
+-- ===================== ESTADO =====================
+local espOn, flyOn, ncOn = false, false, false
+local espHL = {}
+local flyBV, flyBG, flyConn, ncConn
+local followConnection, followingTarget, selectedPlayer
+local searchFocused = false
+local inputConnections = {}
+
+-- ===================== CORES =====================
+local BG      = Color3.fromRGB(10,  10,  18)
+local CARD    = Color3.fromRGB(16,  16,  28)
+local ACCENT  = Color3.fromRGB(255,  30, 110)
+local ACCENT2 = Color3.fromRGB(140,  60, 255)
+local CYAN    = Color3.fromRGB(0,   220, 255)
+local GREEN   = Color3.fromRGB(40,  210, 110)
+local RED     = Color3.fromRGB(200,  45,  60)
+local TEXTW   = Color3.fromRGB(230, 230, 245)
+local TEXTDIM = Color3.fromRGB(110, 110, 140)
+local BLUE    = Color3.fromRGB(0,   100, 180)
+
+-- ===================== GUI =====================
+local gui = Instance.new("ScreenGui")
+gui.Name = "HubUnificado"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 9999
+local ok = pcall(function() gui.Parent = game:GetService("CoreGui") end)
+if not ok then gui.Parent = lp.PlayerGui end
+
+-- Frame principal (altura 560 para caber a opção ZOAR)
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 300, 0, 560)
+frame.Position = UDim2.new(0, 20, 0, 20)
+frame.BackgroundColor3 = BG
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Parent = gui
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+local frameStroke = Instance.new("UIStroke", frame)
+frameStroke.Color = ACCENT
+frameStroke.Thickness = 1.5
+
+-- Título
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -100, 0, 36)
+title.Position = UDim2.new(0, 14, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "HUB MENU"
+title.TextColor3 = TEXTW
+title.Font = Enum.Font.GothamBlack
+title.TextSize = 16
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = frame
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(0, 3, 0, 20)
+titleBar.Position = UDim2.new(0, 8, 0, 8)
+titleBar.BackgroundColor3 = ACCENT
+titleBar.BorderSizePixel = 0
+titleBar.Parent = frame
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 2)
+
+-- Botão CFG (engrenagem)
+local btnGear = Instance.new("TextButton")
+btnGear.Size = UDim2.new(0, 32, 0, 24)
+btnGear.Position = UDim2.new(1, -64, 0, 7)
+btnGear.BackgroundTransparency = 1
+btnGear.Text = "⚙"
+btnGear.TextColor3 = ACCENT2
+btnGear.Font = Enum.Font.GothamBold
+btnGear.TextSize = 18
+btnGear.BorderSizePixel = 0
+btnGear.Parent = frame
+
+-- Botão X
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 24, 0, 24)
+closeBtn.Position = UDim2.new(1, -32, 0, 7)
+closeBtn.BackgroundColor3 = RED
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 13
+closeBtn.BorderSizePixel = 0
+closeBtn.ZIndex = 15
+closeBtn.Parent = frame
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+local sep0 = Instance.new("Frame")
+sep0.Size = UDim2.new(1, -16, 0, 1)
+sep0.Position = UDim2.new(0, 8, 0, 38)
+sep0.BackgroundColor3 = ACCENT
+sep0.BackgroundTransparency = 0.7
+sep0.BorderSizePixel = 0
+sep0.Parent = frame
+
+-- ===================== TOGGLE HELPER =====================
+local function makeToggle(label, hotkey, yPos)
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1, -16, 0, 52)
+    bg.Position = UDim2.new(0, 8, 0, yPos)
+    bg.BackgroundColor3 = CARD
+    bg.BorderSizePixel = 0
+    bg.Parent = frame
+    Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8)
+    local s = Instance.new("UIStroke", bg)
+    s.Color = ACCENT2
+    s.Thickness = 1
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -60, 0, 22)
+    lbl.Position = UDim2.new(0, 10, 0, 6)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
+    lbl.TextColor3 = TEXTW
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = bg
+
+    local hot = Instance.new("TextLabel")
+    hot.Size = UDim2.new(1, -10, 0, 18)
+    hot.Position = UDim2.new(0, 10, 0, 30)
+    hot.BackgroundTransparency = 1
+    hot.Text = hotkey
+    hot.TextColor3 = TEXTDIM
+    hot.Font = Enum.Font.Gotham
+    hot.TextSize = 10
+    hot.TextXAlignment = Enum.TextXAlignment.Left
+    hot.Parent = bg
+
+    local pill = Instance.new("Frame")
+    pill.Size = UDim2.new(0, 40, 0, 22)
+    pill.Position = UDim2.new(1, -50, 0.5, -11)
+    pill.BackgroundColor3 = RED
+    pill.BorderSizePixel = 0
+    pill.Parent = bg
+    Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 16, 0, 16)
+    dot.Position = UDim2.new(0, 3, 0.5, -8)
+    dot.BackgroundColor3 = Color3.new(1,1,1)
+    dot.BorderSizePixel = 0
+    dot.Parent = pill
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+    local state = false
+    local function setVis(on)
+        TS:Create(pill, TweenInfo.new(0.15), {BackgroundColor3 = on and GREEN or RED}):Play()
+        TS:Create(dot,  TweenInfo.new(0.15), {Position = on and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)}):Play()
+        TS:Create(bg,   TweenInfo.new(0.15), {BackgroundColor3 = on and Color3.fromRGB(20,10,40) or CARD}):Play()
+        s.Color = on and ACCENT or ACCENT2
+    end
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1,0,1,0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.ZIndex = 3
+    btn.Parent = bg
+
+    local function toggle() state = not state; setVis(state); return state end
+    return btn, toggle
+end
+
+local espBtn, espToggle = makeToggle("ESP  (Silhueta)", "Tecla: T", 46)
+local flyBtn, flyToggle = makeToggle("FLY", "F=on/off | E=subir | Q=descer | SHIFT=turbo", 106)
+local ncBtn,  ncToggle  = makeToggle("NoClip", "Tecla: N", 166)
+local zoarBtn, zoarToggle = makeToggle("ZOAR", "Tecla: Z  (jogador mais próximo)", 226)
+
+-- Separador jogadores
+local sep1 = Instance.new("Frame")
+sep1.Size = UDim2.new(1, -16, 0, 1)
+sep1.Position = UDim2.new(0, 8, 0, 286)
+sep1.BackgroundColor3 = ACCENT
+sep1.BackgroundTransparency = 0.7
+sep1.BorderSizePixel = 0
+sep1.Parent = frame
+
+local secLabel = Instance.new("TextLabel")
+secLabel.Size = UDim2.new(1, -16, 0, 20)
+secLabel.Position = UDim2.new(0, 8, 0, 290)
+secLabel.BackgroundTransparency = 1
+secLabel.Text = "👥  JOGADORES"
+secLabel.TextColor3 = ACCENT
+secLabel.Font = Enum.Font.GothamBold
+secLabel.TextSize = 11
+secLabel.TextXAlignment = Enum.TextXAlignment.Left
+secLabel.Parent = frame
+
+-- Barra de pesquisa
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size = UDim2.new(1, -16, 0, 30)
+SearchBox.Position = UDim2.new(0, 8, 0, 314)
+SearchBox.BackgroundColor3 = CARD
+SearchBox.TextColor3 = TEXTW
+SearchBox.PlaceholderText = "🔍 PESQUISAR JOGADOR..."
+SearchBox.PlaceholderColor3 = TEXTW
+SearchBox.Text = ""
+SearchBox.Font = Enum.Font.GothamBlack
+SearchBox.TextSize = 13
+SearchBox.BorderSizePixel = 0
+SearchBox.ClearTextOnFocus = false
+SearchBox.Parent = frame
+Instance.new("UICorner", SearchBox).CornerRadius = UDim.new(0, 7)
+local sp = Instance.new("UIPadding"); sp.PaddingLeft = UDim.new(0,8); sp.Parent = SearchBox
+
+-- ScrollFrame jogadores
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size = UDim2.new(1, -16, 0, 150)
+ScrollFrame.Position = UDim2.new(0, 8, 0, 352)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.BorderSizePixel = 0
+ScrollFrame.ScrollBarThickness = 3
+ScrollFrame.ScrollBarImageColor3 = ACCENT
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollFrame.Parent = frame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 4)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Parent = ScrollFrame
+
+local ListPad = Instance.new("UIPadding")
+ListPad.PaddingTop = UDim.new(0, 2)
+ListPad.PaddingBottom = UDim.new(0, 2)
+ListPad.Parent = ScrollFrame
+
+-- ===================== BOTÃO SERVER SAVER =====================
+local sepSS = Instance.new("Frame")
+sepSS.Size = UDim2.new(1, -16, 0, 1)
+sepSS.Position = UDim2.new(0, 8, 0, 510)
+sepSS.BackgroundColor3 = CYAN
+sepSS.BackgroundTransparency = 0.7
+sepSS.BorderSizePixel = 0
+sepSS.Parent = frame
+
+local btnServerSaver = Instance.new("TextButton")
+btnServerSaver.Size = UDim2.new(1, -16, 0, 36)
+btnServerSaver.Position = UDim2.new(0, 8, 0, 518)
+btnServerSaver.BackgroundColor3 = CARD
+btnServerSaver.Text = "🖥️  SERVER SAVER  →"
+btnServerSaver.TextColor3 = TEXTW
+btnServerSaver.Font = Enum.Font.GothamBlack
+btnServerSaver.TextSize = 13
+btnServerSaver.BorderSizePixel = 0
+btnServerSaver.Parent = frame
+Instance.new("UICorner", btnServerSaver).CornerRadius = UDim.new(0, 8)
+
+-- Hint tecla
+local hint = Instance.new("TextLabel")
+hint.Size = UDim2.new(1, 0, 0, 18)
+hint.Position = UDim2.new(0, 0, 1, -20)
+hint.BackgroundTransparency = 1
+hint.TextColor3 = TEXTDIM
+hint.Font = Enum.Font.Gotham
+hint.TextSize = 10
+hint.TextXAlignment = Enum.TextXAlignment.Center
+hint.Parent = frame
+
+local function updateHint() hint.Text = MenuKey.Name .. " = mostrar/ocultar menu" end
+updateHint()
+
+-- ===================== PAINEL CFG =====================
+local cfgPanel = Instance.new("Frame")
+cfgPanel.Size = UDim2.new(1, 0, 1, 0)
+cfgPanel.BackgroundColor3 = BG
+cfgPanel.BorderSizePixel = 0
+cfgPanel.Visible = false
+cfgPanel.ZIndex = 10
+cfgPanel.Parent = frame
+Instance.new("UICorner", cfgPanel).CornerRadius = UDim.new(0, 12)
+local cfgStroke = Instance.new("UIStroke", cfgPanel)
+cfgStroke.Color = ACCENT2
+cfgStroke.Thickness = 1.5
+
+local cfgTitle = Instance.new("TextLabel")
+cfgTitle.Size = UDim2.new(1,-20,0,30); cfgTitle.Position = UDim2.new(0,10,0,10)
+cfgTitle.BackgroundTransparency = 1; cfgTitle.Text = "Configurações"
+cfgTitle.TextColor3 = ACCENT2; cfgTitle.Font = Enum.Font.GothamBold
+cfgTitle.TextSize = 15; cfgTitle.TextXAlignment = Enum.TextXAlignment.Left
+cfgTitle.ZIndex = 11; cfgTitle.Parent = cfgPanel
+
+local cfgSep = Instance.new("Frame")
+cfgSep.Size = UDim2.new(1,-16,0,1); cfgSep.Position = UDim2.new(0,8,0,44)
+cfgSep.BackgroundColor3 = ACCENT2; cfgSep.BackgroundTransparency = 0.6
+cfgSep.BorderSizePixel = 0; cfgSep.ZIndex = 11; cfgSep.Parent = cfgPanel
+
+local cfgLbl = Instance.new("TextLabel")
+cfgLbl.Size = UDim2.new(1,-20,0,24); cfgLbl.Position = UDim2.new(0,10,0,52)
+cfgLbl.BackgroundTransparency = 1; cfgLbl.Text = "Tecla para abrir/fechar o menu:"
+cfgLbl.TextColor3 = TEXTDIM; cfgLbl.Font = Enum.Font.Gotham
+cfgLbl.TextSize = 12; cfgLbl.TextXAlignment = Enum.TextXAlignment.Left
+cfgLbl.ZIndex = 11; cfgLbl.Parent = cfgPanel
+
+local keyDisplay = Instance.new("TextLabel")
+keyDisplay.Size = UDim2.new(1,-20,0,38); keyDisplay.Position = UDim2.new(0,10,0,80)
+keyDisplay.BackgroundColor3 = CARD; keyDisplay.BorderSizePixel = 0
+keyDisplay.Text = MenuKey.Name; keyDisplay.TextColor3 = ACCENT2
+keyDisplay.Font = Enum.Font.GothamBold; keyDisplay.TextSize = 17
+keyDisplay.ZIndex = 11; keyDisplay.Parent = cfgPanel
+Instance.new("UICorner", keyDisplay).CornerRadius = UDim.new(0,8)
+local kdStroke = Instance.new("UIStroke", keyDisplay)
+kdStroke.Color = ACCENT2; kdStroke.Thickness = 1
+
+local cfgNote = Instance.new("TextLabel")
+cfgNote.Size = UDim2.new(1,-20,0,36); cfgNote.Position = UDim2.new(0,10,0,124)
+cfgNote.BackgroundTransparency = 1; cfgNote.Text = "Clique em Alterar Tecla e pressione\nqualquer tecla do teclado."
+cfgNote.TextColor3 = TEXTDIM; cfgNote.Font = Enum.Font.Gotham
+cfgNote.TextSize = 11; cfgNote.TextWrapped = true
+cfgNote.ZIndex = 11; cfgNote.Parent = cfgPanel
+
+local btnChange = Instance.new("TextButton")
+btnChange.Size = UDim2.new(1,-20,0,36); btnChange.Position = UDim2.new(0,10,0,166)
+btnChange.BackgroundColor3 = ACCENT2; btnChange.Text = "Alterar Tecla"
+btnChange.TextColor3 = TEXTW; btnChange.Font = Enum.Font.GothamBold
+btnChange.TextSize = 13; btnChange.BorderSizePixel = 0
+btnChange.ZIndex = 11; btnChange.Parent = cfgPanel
+Instance.new("UICorner", btnChange).CornerRadius = UDim.new(0,8)
+
+local savedLbl = Instance.new("TextLabel")
+savedLbl.Size = UDim2.new(1,-20,0,22); savedLbl.Position = UDim2.new(0,10,0,208)
+savedLbl.BackgroundTransparency = 1; savedLbl.Text = ""
+savedLbl.TextColor3 = GREEN; savedLbl.Font = Enum.Font.Gotham
+savedLbl.TextSize = 11; savedLbl.ZIndex = 11; savedLbl.Parent = cfgPanel
+
+local btnBack = Instance.new("TextButton")
+btnBack.Size = UDim2.new(1,-20,0,32); btnBack.Position = UDim2.new(0,10,1,-44)
+btnBack.BackgroundColor3 = CARD; btnBack.Text = "← Voltar"
+btnBack.TextColor3 = TEXTW; btnBack.Font = Enum.Font.GothamBold
+btnBack.TextSize = 12; btnBack.BorderSizePixel = 0
+btnBack.ZIndex = 11; btnBack.Parent = cfgPanel
+Instance.new("UICorner", btnBack).CornerRadius = UDim.new(0,8)
+local bbStroke = Instance.new("UIStroke", btnBack)
+bbStroke.Color = ACCENT2; bbStroke.Thickness = 1
+
+local waitingKey = false
+local wConn
+
+btnChange.MouseButton1Click:Connect(function()
+    if waitingKey then return end
+    waitingKey = true
+    btnChange.Text = "Pressione uma tecla..."
+    btnChange.BackgroundColor3 = Color3.fromRGB(180,140,20)
+    savedLbl.Text = ""
+    wConn = UIS.InputBegan:Connect(function(inp)
+        if inp.UserInputType ~= Enum.UserInputType.Keyboard then return end
+        MenuKey = inp.KeyCode
+        keyDisplay.Text = MenuKey.Name
+        savedLbl.Text = "Salvo: " .. MenuKey.Name
+        updateHint(); saveKey(MenuKey)
+        waitingKey = false
+        btnChange.Text = "Alterar Tecla"
+        btnChange.BackgroundColor3 = ACCENT2
+        if wConn then wConn:Disconnect() end
+    end)
+end)
+
+btnGear.MouseButton1Click:Connect(function() cfgPanel.Visible = true end)
+btnBack.MouseButton1Click:Connect(function() cfgPanel.Visible = false end)
+
+-- ===================== PAINEL SERVER SAVER =====================
+local ssPanel = Instance.new("Frame")
+ssPanel.Size = UDim2.new(1, 0, 1, 0)
+ssPanel.BackgroundColor3 = BG
+ssPanel.BorderSizePixel = 0
+ssPanel.Visible = false
+ssPanel.ZIndex = 10
+ssPanel.Parent = frame
+Instance.new("UICorner", ssPanel).CornerRadius = UDim.new(0, 12)
+local ssStroke = Instance.new("UIStroke", ssPanel)
+ssStroke.Color = CYAN
+ssStroke.Thickness = 1.5
+
+local ssTitleBar = Instance.new("Frame")
+ssTitleBar.Size = UDim2.new(0, 3, 0, 20)
+ssTitleBar.Position = UDim2.new(0, 8, 0, 8)
+ssTitleBar.BackgroundColor3 = CYAN
+ssTitleBar.BorderSizePixel = 0
+ssTitleBar.ZIndex = 11
+ssTitleBar.Parent = ssPanel
+Instance.new("UICorner", ssTitleBar).CornerRadius = UDim.new(0, 2)
+
+local ssTitle = Instance.new("TextLabel")
+ssTitle.Size = UDim2.new(1,-20,0,30); ssTitle.Position = UDim2.new(0,18,0,4)
+ssTitle.BackgroundTransparency = 1; ssTitle.Text = "🖥️  Server Saver"
+ssTitle.TextColor3 = CYAN; ssTitle.Font = Enum.Font.GothamBold
+ssTitle.TextSize = 15; ssTitle.TextXAlignment = Enum.TextXAlignment.Left
+ssTitle.ZIndex = 11; ssTitle.Parent = ssPanel
+
+local ssSep = Instance.new("Frame")
+ssSep.Size = UDim2.new(1,-16,0,1); ssSep.Position = UDim2.new(0,8,0,40)
+ssSep.BackgroundColor3 = CYAN; ssSep.BackgroundTransparency = 0.6
+ssSep.BorderSizePixel = 0; ssSep.ZIndex = 11; ssSep.Parent = ssPanel
+
+local ssLblAtual = Instance.new("TextLabel")
+ssLblAtual.Size = UDim2.new(1,-16,0,18); ssLblAtual.Position = UDim2.new(0,8,0,50)
+ssLblAtual.BackgroundTransparency = 1; ssLblAtual.Text = "SERVIDOR ATUAL"
+ssLblAtual.TextColor3 = CYAN; ssLblAtual.Font = Enum.Font.GothamBold
+ssLblAtual.TextSize = 9; ssLblAtual.TextXAlignment = Enum.TextXAlignment.Left
+ssLblAtual.ZIndex = 11; ssLblAtual.Parent = ssPanel
+
+local cardAtual = Instance.new("Frame")
+cardAtual.Size = UDim2.new(1,-16,0,54); cardAtual.Position = UDim2.new(0,8,0,70)
+cardAtual.BackgroundColor3 = CARD; cardAtual.BorderSizePixel = 0
+cardAtual.ZIndex = 11; cardAtual.Parent = ssPanel
+Instance.new("UICorner", cardAtual).CornerRadius = UDim.new(0,8)
+local caStr = Instance.new("UIStroke", cardAtual); caStr.Color = CYAN; caStr.Thickness = 1
+
+local lblPlaceAtual = Instance.new("TextLabel")
+lblPlaceAtual.Size = UDim2.new(1,-10,0,22); lblPlaceAtual.Position = UDim2.new(0,8,0,6)
+lblPlaceAtual.BackgroundTransparency = 1
+lblPlaceAtual.Text = "Place ID: " .. tostring(game.PlaceId)
+lblPlaceAtual.TextColor3 = TEXTW
+lblPlaceAtual.Font = Enum.Font.GothamBold
+lblPlaceAtual.TextSize = 11; lblPlaceAtual.TextXAlignment = Enum.TextXAlignment.Left
+lblPlaceAtual.ZIndex = 12; lblPlaceAtual.Parent = cardAtual
+
+local lblJobAtual = Instance.new("TextLabel")
+lblJobAtual.Size = UDim2.new(1,-10,0,18); lblJobAtual.Position = UDim2.new(0,8,0,30)
+lblJobAtual.BackgroundTransparency = 1
+lblJobAtual.Text = "Job: " .. tostring(game.JobId):sub(1,28) .. "..."
+lblJobAtual.TextColor3 = TEXTW
+lblJobAtual.Font = Enum.Font.GothamBold
+lblJobAtual.TextSize = 10
+lblJobAtual.TextXAlignment = Enum.TextXAlignment.Left
+lblJobAtual.ZIndex = 12; lblJobAtual.Parent = cardAtual
+
+local btnSave = Instance.new("TextButton")
+btnSave.Size = UDim2.new(1,-16,0,36); btnSave.Position = UDim2.new(0,8,0,134)
+btnSave.BackgroundColor3 = BLUE; btnSave.Text = "💾  Salvar Este Servidor"
+btnSave.TextColor3 = TEXTW; btnSave.Font = Enum.Font.GothamBold
+btnSave.TextSize = 13; btnSave.BorderSizePixel = 0
+btnSave.ZIndex = 11; btnSave.Parent = ssPanel
+Instance.new("UICorner", btnSave).CornerRadius = UDim.new(0,8)
+
+local ssSep2 = Instance.new("Frame")
+ssSep2.Size = UDim2.new(1,-16,0,1); ssSep2.Position = UDim2.new(0,8,0,180)
+ssSep2.BackgroundColor3 = GREEN; ssSep2.BackgroundTransparency = 0.6
+ssSep2.BorderSizePixel = 0; ssSep2.ZIndex = 11; ssSep2.Parent = ssPanel
+
+local ssLblSalvo = Instance.new("TextLabel")
+ssLblSalvo.Size = UDim2.new(1,-16,0,18); ssLblSalvo.Position = UDim2.new(0,8,0,190)
+ssLblSalvo.BackgroundTransparency = 1; ssLblSalvo.Text = "SERVIDOR SALVO"
+ssLblSalvo.TextColor3 = GREEN; ssLblSalvo.Font = Enum.Font.GothamBold
+ssLblSalvo.TextSize = 9; ssLblSalvo.TextXAlignment = Enum.TextXAlignment.Left
+ssLblSalvo.ZIndex = 11; ssLblSalvo.Parent = ssPanel
+
+local cardSalvo = Instance.new("Frame")
+cardSalvo.Size = UDim2.new(1,-16,0,54); cardSalvo.Position = UDim2.new(0,8,0,210)
+cardSalvo.BackgroundColor3 = CARD; cardSalvo.BorderSizePixel = 0
+cardSalvo.ZIndex = 11; cardSalvo.Parent = ssPanel
+Instance.new("UICorner", cardSalvo).CornerRadius = UDim.new(0,8)
+local csStr = Instance.new("UIStroke", cardSalvo); csStr.Color = GREEN; csStr.Thickness = 1
+
+local lblSalvo = Instance.new("TextLabel")
+lblSalvo.Size = UDim2.new(1,-10,1,0); lblSalvo.Position = UDim2.new(0,8,0,0)
+lblSalvo.BackgroundTransparency = 1; lblSalvo.Text = "Nenhum servidor salvo"
+lblSalvo.TextColor3 = TEXTDIM; lblSalvo.Font = Enum.Font.Gotham
+lblSalvo.TextSize = 10; lblSalvo.TextXAlignment = Enum.TextXAlignment.Left
+lblSalvo.TextWrapped = true; lblSalvo.ZIndex = 12; lblSalvo.Parent = cardSalvo
+
+local btnJoin = Instance.new("TextButton")
+btnJoin.Size = UDim2.new(1,-16,0,36); btnJoin.Position = UDim2.new(0,8,0,274)
+btnJoin.BackgroundColor3 = Color3.fromRGB(25,25,40); btnJoin.Text = "🚀  Entrar no Servidor Salvo"
+btnJoin.TextColor3 = TEXTDIM; btnJoin.Font = Enum.Font.GothamBold
+btnJoin.TextSize = 13; btnJoin.BorderSizePixel = 0
+btnJoin.ZIndex = 11; btnJoin.Parent = ssPanel
+Instance.new("UICorner", btnJoin).CornerRadius = UDim.new(0,8)
+
+local serverStatus = Instance.new("TextLabel")
+serverStatus.Size = UDim2.new(1,-16,0,18); serverStatus.Position = UDim2.new(0,8,0,318)
+serverStatus.BackgroundTransparency = 1; serverStatus.Text = ""
+serverStatus.TextColor3 = GREEN; serverStatus.Font = Enum.Font.Gotham
+serverStatus.TextSize = 10; serverStatus.TextXAlignment = Enum.TextXAlignment.Center
+serverStatus.ZIndex = 11; serverStatus.Parent = ssPanel
+
+-- Separador lembrete
+local sepReminder = Instance.new("Frame")
+sepReminder.Size = UDim2.new(1,-16,0,1); sepReminder.Position = UDim2.new(0,8,0,344)
+sepReminder.BackgroundColor3 = CYAN; sepReminder.BackgroundTransparency = 0.7
+sepReminder.BorderSizePixel = 0; sepReminder.ZIndex = 11; sepReminder.Parent = ssPanel
+
+-- Toggle de lembrete automático
+local reminderOn = true
+
+local reminderBg = Instance.new("Frame")
+reminderBg.Size = UDim2.new(1,-16,0,44); reminderBg.Position = UDim2.new(0,8,0,352)
+reminderBg.BackgroundColor3 = CARD; reminderBg.BorderSizePixel = 0
+reminderBg.ZIndex = 11; reminderBg.Parent = ssPanel
+Instance.new("UICorner", reminderBg).CornerRadius = UDim.new(0,8)
+local remStr = Instance.new("UIStroke", reminderBg)
+remStr.Color = ACCENT2; remStr.Thickness = 1
+
+local reminderLbl = Instance.new("TextLabel")
+reminderLbl.Size = UDim2.new(1,-60,0,22); reminderLbl.Position = UDim2.new(0,10,0,4)
+reminderLbl.BackgroundTransparency = 1; reminderLbl.Text = "Lembrete de salvar"
+reminderLbl.TextColor3 = TEXTW; reminderLbl.Font = Enum.Font.GothamBold
+reminderLbl.TextSize = 12; reminderLbl.TextXAlignment = Enum.TextXAlignment.Left
+reminderLbl.ZIndex = 12; reminderLbl.Parent = reminderBg
+
+local reminderSub = Instance.new("TextLabel")
+reminderSub.Size = UDim2.new(1,-60,0,16); reminderSub.Position = UDim2.new(0,10,0,26)
+reminderSub.BackgroundTransparency = 1; reminderSub.Text = "Pergunta a cada 1 minuto"
+reminderSub.TextColor3 = TEXTDIM; reminderSub.Font = Enum.Font.Gotham
+reminderSub.TextSize = 10; reminderSub.TextXAlignment = Enum.TextXAlignment.Left
+reminderSub.ZIndex = 12; reminderSub.Parent = reminderBg
+
+local remPill = Instance.new("Frame")
+remPill.Size = UDim2.new(0,40,0,22); remPill.Position = UDim2.new(1,-50,0.5,-11)
+remPill.BackgroundColor3 = RED; remPill.BorderSizePixel = 0
+remPill.ZIndex = 12; remPill.Parent = reminderBg
+Instance.new("UICorner", remPill).CornerRadius = UDim.new(1,0)
+
+local remDot = Instance.new("Frame")
+remDot.Size = UDim2.new(0,16,0,16); remDot.Position = UDim2.new(0,3,0.5,-8)
+remDot.BackgroundColor3 = Color3.new(1,1,1); remDot.BorderSizePixel = 0
+remDot.ZIndex = 13; remDot.Parent = remPill
+Instance.new("UICorner", remDot).CornerRadius = UDim.new(1,0)
+
+local reminderBtn = Instance.new("TextButton")
+reminderBtn.Size = UDim2.new(1,0,1,0); reminderBtn.BackgroundTransparency = 1
+reminderBtn.Text = ""; reminderBtn.ZIndex = 13; reminderBtn.Parent = reminderBg
+
+local function setReminderVis(on)
+    TS:Create(remPill, TweenInfo.new(0.15), {BackgroundColor3 = on and GREEN or RED}):Play()
+    TS:Create(remDot,  TweenInfo.new(0.15), {Position = on and UDim2.new(1,-19,0.5,-8) or UDim2.new(0,3,0.5,-8)}):Play()
+    TS:Create(reminderBg, TweenInfo.new(0.15), {BackgroundColor3 = on and Color3.fromRGB(20,10,40) or CARD}):Play()
+    remStr.Color = on and CYAN or ACCENT2
+end
+
+local btnSSBack = Instance.new("TextButton")
+btnSSBack.Size = UDim2.new(1,-16,0,32); btnSSBack.Position = UDim2.new(0,8,1,-44)
+btnSSBack.BackgroundColor3 = CARD; btnSSBack.Text = "← Voltar"
+btnSSBack.TextColor3 = TEXTW; btnSSBack.Font = Enum.Font.GothamBold
+btnSSBack.TextSize = 12; btnSSBack.BorderSizePixel = 0
+btnSSBack.ZIndex = 11; btnSSBack.Parent = ssPanel
+Instance.new("UICorner", btnSSBack).CornerRadius = UDim.new(0,8)
+
+-- ===================== LÓGICA SERVER SAVER =====================
+local function refreshSavedDisplay()
+    local pId, jId = loadServer()
+    if pId and jId then
+        lblSalvo.Text = "Place: " .. pId .. "\nJob: " .. jId:sub(1,26) .. "..."
+        lblSalvo.TextColor3 = TEXTW
+        btnJoin.BackgroundColor3 = Color3.fromRGB(20,140,60)
+        btnJoin.TextColor3 = TEXTW
+    else
+        lblSalvo.Text = "Nenhum servidor salvo"
+        lblSalvo.TextColor3 = TEXTDIM
+        btnJoin.BackgroundColor3 = Color3.fromRGB(25,25,40)
+        btnJoin.TextColor3 = TEXTDIM
+    end
+end
+refreshSavedDisplay()
+
+-- ===================== POPUP LEMBRETE =====================
+local reminderPopup = Instance.new("Frame")
+reminderPopup.Size = UDim2.new(0, 260, 0, 110)
+reminderPopup.Position = UDim2.new(1, -276, 0, 16)
+reminderPopup.BackgroundColor3 = Color3.fromRGB(12, 12, 22)
+reminderPopup.BorderSizePixel = 0
+reminderPopup.Visible = false
+reminderPopup.ZIndex = 50
+reminderPopup.Parent = gui
+Instance.new("UICorner", reminderPopup).CornerRadius = UDim.new(0, 12)
+local rpStr = Instance.new("UIStroke", reminderPopup)
+rpStr.Color = CYAN; rpStr.Thickness = 2.5
+
+local rpTitle = Instance.new("TextLabel")
+rpTitle.Size = UDim2.new(1,-56,0,28); rpTitle.Position = UDim2.new(0,10,0,8)
+rpTitle.BackgroundTransparency = 1; rpTitle.Text = "🖥️  Salvar Servidor?"
+rpTitle.TextColor3 = CYAN; rpTitle.Font = Enum.Font.GothamBlack
+rpTitle.TextSize = 14; rpTitle.TextXAlignment = Enum.TextXAlignment.Left
+rpTitle.ZIndex = 51; rpTitle.Parent = reminderPopup
+
+-- Indicador de estado no canto superior direito
+local rpIndicator = Instance.new("Frame")
+rpIndicator.Size = UDim2.new(0, 28, 0, 28)
+rpIndicator.Position = UDim2.new(1, -38, 0, 8)
+rpIndicator.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+rpIndicator.BorderSizePixel = 0
+rpIndicator.ZIndex = 52
+rpIndicator.Parent = reminderPopup
+Instance.new("UICorner", rpIndicator).CornerRadius = UDim.new(1, 0)
+local rpIndStroke = Instance.new("UIStroke", rpIndicator)
+rpIndStroke.Thickness = 2; rpIndStroke.Color = CYAN
+
+local rpIndDot = Instance.new("Frame")
+rpIndDot.Size = UDim2.new(0, 12, 0, 12)
+rpIndDot.Position = UDim2.new(0.5, -6, 0.5, -6)
+rpIndDot.BackgroundColor3 = CYAN
+rpIndDot.BorderSizePixel = 0
+rpIndDot.ZIndex = 53
+rpIndDot.Parent = rpIndicator
+Instance.new("UICorner", rpIndDot).CornerRadius = UDim.new(1, 0)
+
+local rpSub = Instance.new("TextLabel")
+rpSub.Size = UDim2.new(1,-16,0,18); rpSub.Position = UDim2.new(0,10,0,36)
+rpSub.BackgroundTransparency = 1; rpSub.Text = "Deseja salvar o servidor atual?"
+rpSub.TextColor3 = TEXTDIM; rpSub.Font = Enum.Font.Gotham
+rpSub.TextSize = 11; rpSub.TextXAlignment = Enum.TextXAlignment.Left
+rpSub.ZIndex = 51; rpSub.Parent = reminderPopup
+
+local rpBtnSim = Instance.new("TextButton")
+rpBtnSim.Size = UDim2.new(0,110,0,32); rpBtnSim.Position = UDim2.new(0,10,0,62)
+rpBtnSim.BackgroundColor3 = Color3.fromRGB(30,160,70)
+rpBtnSim.Text = "✅  SIM"; rpBtnSim.TextColor3 = TEXTW
+rpBtnSim.Font = Enum.Font.GothamBlack; rpBtnSim.TextSize = 13
+rpBtnSim.BorderSizePixel = 0; rpBtnSim.ZIndex = 51; rpBtnSim.Parent = reminderPopup
+Instance.new("UICorner", rpBtnSim).CornerRadius = UDim.new(0,8)
+
+local rpBtnNao = Instance.new("TextButton")
+rpBtnNao.Size = UDim2.new(0,110,0,32); rpBtnNao.Position = UDim2.new(1,-120,0,62)
+rpBtnNao.BackgroundColor3 = Color3.fromRGB(180,40,50)
+rpBtnNao.Text = "❌  NÃO"; rpBtnNao.TextColor3 = TEXTW
+rpBtnNao.Font = Enum.Font.GothamBlack; rpBtnNao.TextSize = 13
+rpBtnNao.BorderSizePixel = 0; rpBtnNao.ZIndex = 51; rpBtnNao.Parent = reminderPopup
+Instance.new("UICorner", rpBtnNao).CornerRadius = UDim.new(0,8)
+
+local autoDismissThread = nil
+
+local function hideReminderPopup()
+    if autoDismissThread then task.cancel(autoDismissThread); autoDismissThread = nil end
+    TS:Create(reminderPopup, TweenInfo.new(0.2), {Position = UDim2.new(1, -276, 0, -130)}):Play()
+    task.delay(0.22, function() reminderPopup.Visible = false; reminderPopup.Position = UDim2.new(1,-276,0,16) end)
+end
+
+-- Estado da última resposta: nil = ignorou, true = SIM, false = NÃO
+local lastReminderAnswer = nil
+
+local function updatePopupBorder()
+    local color
+    if lastReminderAnswer == true then
+        color = GREEN
+    elseif lastReminderAnswer == false then
+        color = RED
+    else
+        color = CYAN
+    end
+    rpStr.Color = color
+    rpIndStroke.Color = color
+    TS:Create(rpIndDot, TweenInfo.new(0.2), {BackgroundColor3 = color}):Play()
+    TS:Create(rpIndicator, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(20, 20, 35)}):Play()
+end
+
+local function showReminderPopup()
+    if not gui or not gui.Parent then return end
+    if reminderPopup.Visible then return end
+    updatePopupBorder()
+    reminderPopup.Position = UDim2.new(1, -276, 0, -130)
+    reminderPopup.Visible = true
+    TS:Create(reminderPopup, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Position = UDim2.new(1,-276,0,16)}):Play()
+    -- Auto-fecha sem resposta (não altera lastReminderAnswer)
+    autoDismissThread = task.delay(25, function()
+        autoDismissThread = nil
+        hideReminderPopup()
+    end)
+end
+
+rpBtnSim.MouseButton1Click:Connect(function()
+    lastReminderAnswer = true
+    saveServer(tostring(game.PlaceId), tostring(game.JobId))
+    refreshSavedDisplay()
+    rpSub.Text = "✅ Servidor salvo!"
+    rpSub.TextColor3 = GREEN
+    TS:Create(reminderPopup, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(12,22,14)}):Play()
+    rpStr.Color = GREEN
+    rpIndStroke.Color = GREEN
+    TS:Create(rpIndDot, TweenInfo.new(0.2), {BackgroundColor3 = GREEN}):Play()
+    task.delay(1.5, function()
+        rpSub.Text = "Deseja salvar o servidor atual?"
+        rpSub.TextColor3 = TEXTDIM
+        TS:Create(reminderPopup, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(12,12,22)}):Play()
+        hideReminderPopup()
+    end)
+end)
+
+rpBtnNao.MouseButton1Click:Connect(function()
+    lastReminderAnswer = false
+    rpStr.Color = RED
+    rpIndStroke.Color = RED
+    TS:Create(rpIndDot, TweenInfo.new(0.2), {BackgroundColor3 = RED}):Play()
+    TS:Create(reminderPopup, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(22,12,12)}):Play()
+    task.delay(0.3, function()
+        TS:Create(reminderPopup, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(12,12,22)}):Play()
+        hideReminderPopup()
+    end)
+end)
+
+reminderBtn.MouseButton1Click:Connect(function()
+    reminderOn = not reminderOn
+    setReminderVis(reminderOn)
+    if reminderOn then
+        showReminderPopup()
+    else
+        if reminderPopup.Visible then
+            hideReminderPopup()
+        end
+    end
+end)
+
+-- Pill já começa verde (ativado por padrão) e mostra popup imediatamente
+setReminderVis(true)
+task.delay(1, function()
+    if reminderOn and gui and gui.Parent then
+        showReminderPopup()
+    end
+end)
+
+task.spawn(function()
+    -- Espera o popup fechar, depois aguarda e repete
+    while gui and gui.Parent do
+        while reminderPopup.Visible do task.wait(0.5) end
+        task.wait(5)
+        if reminderOn and gui and gui.Parent then
+            showReminderPopup()
+        end
+    end
+end)
+
+btnServerSaver.MouseButton1Click:Connect(function() ssPanel.Visible = true end)
+btnSSBack.MouseButton1Click:Connect(function() ssPanel.Visible = false end)
+
+btnSave.MouseButton1Click:Connect(function()
+    saveServer(tostring(game.PlaceId), tostring(game.JobId))
+    refreshSavedDisplay()
+    serverStatus.Text = "✅ Servidor salvo!"
+    serverStatus.TextColor3 = GREEN
+    btnSave.BackgroundColor3 = Color3.fromRGB(20,140,60)
+    btnSave.Text = "✅  Salvo!"
+    task.wait(2)
+    btnSave.BackgroundColor3 = BLUE
+    btnSave.Text = "💾  Salvar Este Servidor"
+    serverStatus.Text = ""
+end)
+
+btnJoin.MouseButton1Click:Connect(function()
+    local pId, jId = loadServer()
+    if not pId or not jId then
+        serverStatus.Text = "⚠️ Salve um servidor primeiro!"
+        serverStatus.TextColor3 = RED
+        task.wait(2); serverStatus.Text = ""
+        return
+    end
+    serverStatus.Text = "⏳ Conectando..."
+    serverStatus.TextColor3 = CYAN
+    local ok2, err = pcall(function()
+        TeleportService:TeleportToPlaceInstance(tonumber(pId), jId, lp)
+    end)
+    if not ok2 then
+        serverStatus.Text = "❌ Servidor cheio ou fechado"
+        serverStatus.TextColor3 = RED
+        task.wait(3); serverStatus.Text = ""
+    end
+end)
+
+-- ===================== POPUP SEGUIR =====================
+local PopupFrame = Instance.new("Frame")
+PopupFrame.Size = UDim2.new(0, 190, 0, 90)
+PopupFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 22)
+PopupFrame.BorderSizePixel = 0
+PopupFrame.Visible = false
+PopupFrame.ZIndex = 20
+PopupFrame.Parent = gui
+Instance.new("UICorner", PopupFrame).CornerRadius = UDim.new(0, 10)
+local popStroke = Instance.new("UIStroke", PopupFrame)
+popStroke.Color = ACCENT
+popStroke.Thickness = 1.5
+
+local PopupName = Instance.new("TextLabel")
+PopupName.Size = UDim2.new(1,-10,0,28); PopupName.Position = UDim2.new(0,5,0,4)
+PopupName.BackgroundTransparency = 1; PopupName.TextColor3 = TEXTW
+PopupName.Font = Enum.Font.GothamBold; PopupName.TextSize = 13
+PopupName.ZIndex = 20; PopupName.Parent = PopupFrame
+
+local FollowButton = Instance.new("TextButton")
+FollowButton.Size = UDim2.new(1,-20,0,32); FollowButton.Position = UDim2.new(0,10,0,34)
+FollowButton.BackgroundColor3 = Color3.fromRGB(0,170,100)
+FollowButton.TextColor3 = TEXTW; FollowButton.Text = "📍 Seguir Jogador"
+FollowButton.Font = Enum.Font.GothamBold; FollowButton.TextSize = 13
+FollowButton.BorderSizePixel = 0; FollowButton.ZIndex = 20; FollowButton.Parent = PopupFrame
+Instance.new("UICorner", FollowButton).CornerRadius = UDim.new(0,8)
+
+local CancelButton = Instance.new("TextButton")
+CancelButton.Size = UDim2.new(1,-20,0,18); CancelButton.Position = UDim2.new(0,10,0,69)
+CancelButton.BackgroundColor3 = Color3.fromRGB(35,35,55)
+CancelButton.TextColor3 = TEXTDIM; CancelButton.Text = "Cancelar"
+CancelButton.Font = Enum.Font.Gotham; CancelButton.TextSize = 11
+CancelButton.BorderSizePixel = 0; CancelButton.ZIndex = 20; CancelButton.Parent = PopupFrame
+Instance.new("UICorner", CancelButton).CornerRadius = UDim.new(0,6)
+
+-- ===================== BARRA PARAR DE SEGUIR =====================
+local StopBar = Instance.new("Frame")
+StopBar.Size = UDim2.new(0, 260, 0, 48)
+StopBar.Position = UDim2.new(0.5, -130, 1, -68)
+StopBar.BackgroundColor3 = Color3.fromRGB(14, 14, 22)
+StopBar.BorderSizePixel = 0; StopBar.Visible = false; StopBar.ZIndex = 20
+StopBar.Parent = gui
+Instance.new("UICorner", StopBar).CornerRadius = UDim.new(0,10)
+local sbStr = Instance.new("UIStroke", StopBar)
+sbStr.Color = ACCENT; sbStr.Thickness = 1.5
+
+local StopLabel = Instance.new("TextLabel")
+StopLabel.Size = UDim2.new(1,-110,1,0); StopLabel.Position = UDim2.new(0,10,0,0)
+StopLabel.BackgroundTransparency = 1; StopLabel.TextColor3 = TEXTW
+StopLabel.Font = Enum.Font.GothamSemibold; StopLabel.TextSize = 12
+StopLabel.TextXAlignment = Enum.TextXAlignment.Left
+StopLabel.Text = "🔒 Seguindo: ..."; StopLabel.ZIndex = 20; StopLabel.Parent = StopBar
+
+local StopButton = Instance.new("TextButton")
+StopButton.Size = UDim2.new(0,100,0,32); StopButton.Position = UDim2.new(1,-108,0.5,-16)
+StopButton.BackgroundColor3 = ACCENT
+StopButton.TextColor3 = TEXTW; StopButton.Text = "⛔ Parar"
+StopButton.Font = Enum.Font.GothamBold; StopButton.TextSize = 13
+StopButton.BorderSizePixel = 0; StopButton.ZIndex = 20; StopButton.Parent = StopBar
+Instance.new("UICorner", StopButton).CornerRadius = UDim.new(0,8)
+
+-- ===================== DRAG =====================
+local drag, dragStart, dragOrigin = false, nil, nil
+frame.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then
+        drag=true; dragStart=i.Position; dragOrigin=frame.Position
+    end
+end)
+frame.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 then drag=false end
+end)
+table.insert(inputConnections, UIS.InputChanged:Connect(function(i)
+    if drag and i.UserInputType == Enum.UserInputType.MouseMovement then
+        local d = i.Position - dragStart
+        frame.Position = UDim2.new(dragOrigin.X.Scale, dragOrigin.X.Offset+d.X, dragOrigin.Y.Scale, dragOrigin.Y.Offset+d.Y)
+    end
+end))
+
+-- ===================== ESP =====================
+local function clearESP(p)
+    if espHL[p] then for _,h in ipairs(espHL[p]) do pcall(function() h:Destroy() end) end; espHL[p]=nil end
+end
+local function applyESP(p)
+    if p==lp then return end
+    local char=p.Character; if not char then return end
+    clearESP(p)
+    local hl=Instance.new("Highlight")
+    hl.FillColor=ACCENT; hl.OutlineColor=CYAN
+    hl.FillTransparency=0.6; hl.OutlineTransparency=0
+    hl.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Adornee=char; hl.Parent=char
+
+    -- Nome acima do personagem
+    local head = char:FindFirstChild("Head")
+    if head then
+        local bb = Instance.new("BillboardGui")
+        bb.Size = UDim2.new(0, 120, 0, 30)
+        bb.StudsOffset = Vector3.new(0, 2.5, 0)
+        bb.AlwaysOnTop = true
+        bb.Adornee = head
+        bb.Parent = head
+
+        local nameLbl = Instance.new("TextLabel")
+        nameLbl.Size = UDim2.new(1, 0, 1, 0)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.Text = p.DisplayName
+        nameLbl.TextColor3 = Color3.new(1, 1, 1)
+        nameLbl.Font = Enum.Font.GothamBold
+        nameLbl.TextSize = 14
+        nameLbl.TextStrokeTransparency = 0.4
+        nameLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+        nameLbl.Parent = bb
+
+        espHL[p] = {hl, bb}
+    else
+        espHL[p] = {hl}
+    end
+end
+local function enableESP() for _,p in ipairs(Players:GetPlayers()) do applyESP(p) end end
+local function disableESP() for p in pairs(espHL) do clearESP(p) end end
+local function connectESP(p)
+    if p==lp then return end
+    p.CharacterAdded:Connect(function() task.wait(1); if espOn then applyESP(p) end end)
+end
+for _,p in ipairs(Players:GetPlayers()) do connectESP(p) end
+Players.PlayerAdded:Connect(function(p) connectESP(p) end)
+Players.PlayerRemoving:Connect(clearESP)
+lp.CharacterAdded:Connect(function() if espOn then task.wait(1); enableESP() end end)
+
+-- ===================== FLY =====================
+local function startFly()
+    local char=lp.Character; if not char then return end
+    local hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then return end
+    local hum=char:FindFirstChildOfClass("Humanoid"); if hum then hum.PlatformStand=true end
+    flyBV=Instance.new("BodyVelocity",hrp); flyBV.MaxForce=Vector3.new(1e6,1e6,1e6); flyBV.Velocity=Vector3.zero
+    flyBG=Instance.new("BodyGyro",hrp); flyBG.MaxTorque=Vector3.new(1e6,1e6,1e6); flyBG.P=9e3; flyBG.D=80; flyBG.CFrame=hrp.CFrame
+    flyConn=RunService.Heartbeat:Connect(function()
+        if not flyOn then return end
+        if searchFocused then
+            if flyBV and flyBV.Parent then flyBV.Velocity = Vector3.zero end
+            return
+        end
+        local cam=workspace.CurrentCamera; local spd=60 --velocidade do fly
+        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then spd=spd*10 end --velocidade do shift turbo do fly
+        if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then spd=spd*0.25 end
+        local dir=Vector3.zero
+        if UIS:IsKeyDown(Enum.KeyCode.W) then dir+=cam.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then dir-=cam.CFrame.LookVector end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then dir-=cam.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then dir+=cam.CFrame.RightVector end
+        if UIS:IsKeyDown(Enum.KeyCode.E) then dir+=Vector3.new(0,1,0) end
+        if UIS:IsKeyDown(Enum.KeyCode.Q) then dir-=Vector3.new(0,1,0) end
+        if flyBV and flyBV.Parent then flyBV.Velocity=dir.Magnitude>0 and dir.Unit*spd or Vector3.zero end
+        if flyBG and flyBG.Parent then flyBG.CFrame=cam.CFrame end
+    end)
+end
+local function stopFly()
+    if flyConn then flyConn:Disconnect(); flyConn=nil end
+    if flyBV then flyBV:Destroy(); flyBV=nil end
+    if flyBG then flyBG:Destroy(); flyBG=nil end
+    local char=lp.Character; if char then local hum=char:FindFirstChildOfClass("Humanoid"); if hum then hum.PlatformStand=false end end
+end
+
+-- ===================== NOCLIP =====================
+local function startNoclip()
+    ncConn=RunService.Stepped:Connect(function()
+        local char=lp.Character; if not char then return end
+        for _,p in ipairs(char:GetDescendants()) do
+            if p:IsA("BasePart") then p.CanCollide=false end
+        end
+    end)
+end
+local function stopNoclip()
+    if ncConn then ncConn:Disconnect(); ncConn=nil end
+    local char=lp.Character; if not char then return end
+    for _,p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=true end end
+end
+
+-- ===================== SEGUIR JOGADOR =====================
+local function stopFollowing()
+    if followConnection then followConnection:Disconnect(); followConnection=nil end
+    followingTarget = nil
+    local char = lp.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed=16; hum.JumpPower=50 end
+    end
+    StopBar.Visible = false
+end
+
+local function startFollowing(target)
+    stopFollowing()
+    local myChar=lp.Character; local targetChar=target.Character
+    if not myChar or not targetChar then return end
+    local myRoot=myChar:FindFirstChild("HumanoidRootPart")
+    local targetRoot=targetChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot or not targetRoot then return end
+    local hum=myChar:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed=0; hum.JumpPower=0 end
+    followingTarget=target
+    StopLabel.Text="🔒 Seguindo: "..target.DisplayName
+    StopBar.Visible=true
+
+    -- Calcula offset só no plano horizontal (ignora Y do alvo)
+    local myPos = myRoot.Position
+    local tPos  = targetRoot.Position
+    local offsetX = myPos.X - tPos.X
+    local offsetZ = myPos.Z - tPos.Z
+    -- Trava a altura do meu boneco no chão onde ele está agora
+    local lockedY = myPos.Y
+
+    followConnection=RunService.Heartbeat:Connect(function()
+        local tChar=target.Character
+        if not tChar then stopFollowing(); return end
+        local tRoot=tChar:FindFirstChild("HumanoidRootPart")
+        local mChar=lp.Character
+        local mRoot=mChar and mChar:FindFirstChild("HumanoidRootPart")
+        if tRoot and mRoot then
+            local tPos2 = tRoot.Position
+            local newPos = Vector3.new(tPos2.X + offsetX, lockedY, tPos2.Z + offsetZ)
+            mRoot.CFrame = CFrame.new(newPos) * (mRoot.CFrame - mRoot.CFrame.Position)
+        end
+    end)
+end
+
+FollowButton.MouseButton1Click:Connect(function()
+    if selectedPlayer then startFollowing(selectedPlayer); PopupFrame.Visible=false end
+end)
+StopButton.MouseButton1Click:Connect(function() stopFollowing() end)
+CancelButton.MouseButton1Click:Connect(function() PopupFrame.Visible=false end)
+
+-- ===================== ZOAR =====================
+local setZoar, toggleZoar
+do
+    local ZOAR_MIN_DIST = 1    -- distância mínima na frente do alvo (studs)
+    local ZOAR_TRAVEL   = 1    -- quanto você vai e volta (studs)
+    local ZOAR_SPEED    = 36   -- velocidade do vai-e-vem
+
+    local zoarOn, zoarTarget, zoarHB, zoarStep = false, nil, nil, nil
+    local zoarCollide = {}
+    local zoarLocked, zoarNext = nil, 0
+    local BLOCK = { Enum.HumanoidStateType.Freefall, Enum.HumanoidStateType.Jumping, Enum.HumanoidStateType.FallingDown }
+
+    local function myRoot() local c = lp.Character return c and c:FindFirstChild("HumanoidRootPart") end
+    local function myHum() local c = lp.Character return c and c:FindFirstChildOfClass("Humanoid") end
+
+    local function nearest()
+        local r = myRoot()
+        if not r then return end
+        local best, bd
+        for _, p in ipairs(Players:GetPlayers()) do
+            local c = p ~= lp and p.Character
+            local tr = c and c:FindFirstChild("HumanoidRootPart")
+            local hm = c and c:FindFirstChildOfClass("Humanoid")
+            if tr and hm and hm.Health > 0 then
+                local d = (tr.Position - r.Position).Magnitude
+                if not bd or d < bd then best, bd = p, d end
+            end
+        end
+        return best
+    end
+
+    local function waistOffset(r)
+        local c = lp.Character
+        local part = c and (c:FindFirstChild("LowerTorso") or c:FindFirstChild("UpperTorso"))
+        local att = part and part:FindFirstChild("WaistRigAttachment")
+        if att and att:IsA("Attachment") then
+            local d = att.WorldPosition.Y - r.Position.Y
+            if d == d and math.abs(d) < 20 then return d end
+        end
+        return 0
+    end
+    local function headY(tr, tc)
+        local head = tc and tc:FindFirstChild("Head")
+        if head and head:IsA("BasePart") then return head.Position.Y end
+        return tr.Position.Y + tr.Size.Y / 2
+    end
+
+    local function unlock()
+        local h = zoarLocked
+        zoarLocked = nil
+        if h and h.Parent then
+            for _, s in ipairs(BLOCK) do pcall(function() h:SetStateEnabled(s, true) end) end
+        end
+    end
+    local function stand(h)
+        if zoarLocked ~= h then
+            unlock()
+            zoarLocked, zoarNext = h, 0
+            for _, s in ipairs(BLOCK) do pcall(function() h:SetStateEnabled(s, false) end) end
+            pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end)
+        end
+        local now = os.clock()
+        if now < zoarNext or h.Health <= 0 then return end
+        zoarNext = now + 0.1
+        if h:GetState() ~= Enum.HumanoidStateType.Running then
+            pcall(function() h:ChangeState(Enum.HumanoidStateType.Running) end)
+        end
+        local an = h:FindFirstChildOfClass("Animator")
+        if an then
+            for _, t in ipairs(an:GetPlayingAnimationTracks()) do
+                local n = t.Animation and t.Animation.Name
+                if n == "FallAnim" or n == "JumpAnim" then pcall(function() t:Stop(0.1) end) end
+            end
+        end
+    end
+
+    setZoar = function(want)
+        if want == zoarOn then return end
+        if want then
+            local p = nearest()
+            if not p then return end            -- ninguém por perto: não liga
+            zoarOn, zoarTarget = true, p
+            zoarToggle()                        -- acende o botão
+            zoarStep = RunService.Stepped:Connect(function()
+                local c = lp.Character
+                if not c then return end
+                for _, part in ipairs(c:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then zoarCollide[part] = true; part.CanCollide = false end
+                end
+            end)
+            zoarHB = RunService.Heartbeat:Connect(function()
+                if not (zoarTarget and zoarTarget.Parent == Players) then return setZoar(false) end
+                local tc = zoarTarget.Character
+                local tr = tc and tc:FindFirstChild("HumanoidRootPart")
+                local r, h = myRoot(), myHum()
+                if not (tr and r and h) then return end
+                r.AssemblyLinearVelocity, r.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+                h.Sit = false
+                stand(h)
+                local k = (math.sin(os.clock() * ZOAR_SPEED) + 1) / 2
+                local flat = tr.CFrame.LookVector * (ZOAR_MIN_DIST + k * ZOAR_TRAVEL)
+                local pos = Vector3.new(tr.Position.X + flat.X, headY(tr, tc) - waistOffset(r), tr.Position.Z + flat.Z)
+                r.CFrame = CFrame.lookAt(pos, Vector3.new(tr.Position.X, pos.Y, tr.Position.Z))
+            end)
+        else
+            zoarOn, zoarTarget = false, nil
+            zoarToggle()                        -- apaga o botão
+            if zoarHB then zoarHB:Disconnect(); zoarHB = nil end
+            if zoarStep then zoarStep:Disconnect(); zoarStep = nil end
+            for part in pairs(zoarCollide) do if part.Parent then part.CanCollide = true end end
+            zoarCollide = {}
+            unlock()
+            local h = myHum()
+            if h then h.Sit = false end
+        end
+    end
+
+    toggleZoar = function() setZoar(not zoarOn) end
+    zoarBtn.MouseButton1Click:Connect(toggleZoar)
+    lp.CharacterAdded:Connect(function() setZoar(false) end)
+    closeBtn.MouseButton1Click:Connect(function() setZoar(false) end)
+end
+
+-- ===================== LISTA DE JOGADORES =====================
+local function createPlayerCard(player)
+    if player == lp then return end
+    local Card = Instance.new("TextButton")
+    Card.Name = player.Name
+    Card.Size = UDim2.new(1, 0, 0, 48)
+    Card.BackgroundColor3 = CARD
+    Card.BorderSizePixel = 0; Card.Text = ""; Card.AutoButtonColor = false
+    Card.Parent = ScrollFrame
+    Instance.new("UICorner", Card).CornerRadius = UDim.new(0, 8)
+    local cStr = Instance.new("UIStroke", Card)
+    cStr.Color = ACCENT; cStr.Thickness = 1
+
+    local Avatar = Instance.new("ImageLabel")
+    Avatar.Size = UDim2.new(0, 36, 0, 36); Avatar.Position = UDim2.new(0, 6, 0.5, -18)
+    Avatar.BackgroundColor3 = Color3.fromRGB(30, 30, 50); Avatar.BorderSizePixel = 0
+    Avatar.Image = "https://www.roblox.com/headshot-thumbnail/image?userId="..player.UserId.."&width=150&height=150&format=png"
+    Avatar.Parent = Card
+    Instance.new("UICorner", Avatar).CornerRadius = UDim.new(1, 0)
+    local aStr = Instance.new("UIStroke", Avatar)
+    aStr.Color = ACCENT; aStr.Thickness = 1.5
+
+    local NameLabel = Instance.new("TextLabel")
+    NameLabel.Size = UDim2.new(1, -52, 1, 0); NameLabel.Position = UDim2.new(0, 48, 0, 0)
+    NameLabel.BackgroundTransparency = 1; NameLabel.TextColor3 = TEXTW
+    NameLabel.Font = Enum.Font.GothamSemibold; NameLabel.TextSize = 11
+    NameLabel.Text = player.DisplayName.."\n@"..player.Name
+    NameLabel.TextXAlignment = Enum.TextXAlignment.Left; NameLabel.Parent = Card
+
+    Card.MouseEnter:Connect(function()
+        TS:Create(Card, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(30, 10, 50)}):Play()
+        cStr.Color = ACCENT2
+    end)
+    Card.MouseLeave:Connect(function()
+        TS:Create(Card, TweenInfo.new(0.12), {BackgroundColor3 = CARD}):Play()
+        cStr.Color = ACCENT
+    end)
+
+    Card.MouseButton1Click:Connect(function()
+        selectedPlayer = player
+        PopupName.Text = "👤 " .. player.DisplayName
+        local absPos = Card.AbsolutePosition
+        local frameAbsPos = frame.AbsolutePosition
+        local frameAbsSize = frame.AbsoluteSize
+        PopupFrame.Position = UDim2.new(0, frameAbsPos.X + frameAbsSize.X + 8, 0, absPos.Y)
+        PopupFrame.Visible = true
+    end)
+end
+
+local function refreshList()
+    for _, c in ipairs(ScrollFrame:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= lp then createPlayerCard(p) end
+    end
+end
+
+-- ===================== PESQUISA =====================
+SearchBox.Focused:Connect(function() searchFocused = true; UIS.ModalEnabled = true end)
+SearchBox.FocusLost:Connect(function() searchFocused = false; UIS.ModalEnabled = false end)
+
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    local query = SearchBox.Text:lower()
+    for _, card in ipairs(ScrollFrame:GetChildren()) do
+        if card:IsA("TextButton") then
+            local player = Players:FindFirstChild(card.Name)
+            if player then
+                local displayName = player.DisplayName:lower()
+                local userName = player.Name:lower()
+                card.Visible = displayName:find(query, 1, true) ~= nil
+                    or userName:find(query, 1, true) ~= nil
+            end
+        end
+    end
+end)
+
+-- ===================== CLIQUES TOGGLES =====================
+espBtn.MouseButton1Click:Connect(function() espOn=espToggle(); if espOn then enableESP() else disableESP() end end)
+flyBtn.MouseButton1Click:Connect(function() flyOn=flyToggle(); if flyOn then startFly() else stopFly() end end)
+ncBtn.MouseButton1Click:Connect(function()  ncOn=ncToggle();  if ncOn  then startNoclip() else stopNoclip() end end)
+
+-- ===================== BOTÃO X =====================
+closeBtn.MouseButton1Click:Connect(function()
+    if flyOn then stopFly() end
+    if ncOn then stopNoclip() end
+    if espOn then disableESP() end
+    stopFollowing()
+    for _, conn in ipairs(inputConnections) do pcall(function() conn:Disconnect() end) end
+    inputConnections = {}
+    if wConn then pcall(function() wConn:Disconnect() end); wConn = nil end
+    UIS.ModalEnabled = false
+    espOn = false; flyOn = false; ncOn = false; searchFocused = false
+    gui:Destroy()
+    print("[HubUnificado] Script encerrado por completo.")
+end)
+
+-- ===================== TECLAS =====================
+table.insert(inputConnections, UIS.InputBegan:Connect(function(inp, gpe)
+    if inp.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    local k = inp.KeyCode
+    if k == MenuKey and not searchFocused then
+        frame.Visible = not frame.Visible
+        PopupFrame.Visible = false
+        return
+    end
+    if searchFocused then return end
+    if gpe then return end
+    if k == Enum.KeyCode.T then
+        espOn=espToggle(); if espOn then enableESP() else disableESP() end
+    elseif k == Enum.KeyCode.F then
+        flyOn=flyToggle(); if flyOn then startFly() else stopFly() end
+    elseif k == Enum.KeyCode.N then
+        ncOn=ncToggle(); if ncOn then startNoclip() else stopNoclip() end
+    elseif k == Enum.KeyCode.Z then
+        toggleZoar()
+    end
+end))
+
+-- ===================== EVENTOS JOGADORES =====================
+refreshList()
+Players.PlayerAdded:Connect(function(p) task.wait(1); if p~=lp then createPlayerCard(p) end end)
+Players.PlayerRemoving:Connect(function(p)
+    local card=ScrollFrame:FindFirstChild(p.Name)
+    if card then card:Destroy() end
+    if followingTarget==p then stopFollowing() end
+end)
+
+print("[HubUnificado] Carregado! "..MenuKey.Name.."=menu | T=ESP | F=Fly | N=Noclip | Z=Zoar")
