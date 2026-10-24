@@ -798,7 +798,7 @@ end)
 
 -- ===================== POPUP SEGUIR =====================
 local PopupFrame = Instance.new("Frame")
-PopupFrame.Size = UDim2.new(0, 190, 0, 90)
+PopupFrame.Size = UDim2.new(0, 190, 0, 132)
 PopupFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 22)
 PopupFrame.BorderSizePixel = 0
 PopupFrame.Visible = false
@@ -814,9 +814,17 @@ PopupName.Size = UDim2.new(1,-10,0,28); PopupName.Position = UDim2.new(0,5,0,4)
 PopupName.BackgroundTransparency = 1; PopupName.TextColor3 = TEXTW
 PopupName.Font = Enum.Font.GothamBold; PopupName.TextSize = 13
 PopupName.ZIndex = 20; PopupName.Parent = PopupFrame
-
+--BOTAO DO TP ATE O JOGADOR
+local TPButton = Instance.new("TextButton")
+TPButton.Size = UDim2.new(1,-20,0,32); TPButton.Position = UDim2.new(0,10,0,34)
+TPButton.BackgroundColor3 = Color3.fromRGB(0,100,180)
+TPButton.TextColor3 = TEXTW; TPButton.Text = "⚡ Teleportar até Jogador"
+TPButton.Font = Enum.Font.GothamBold; TPButton.TextSize = 12
+TPButton.BorderSizePixel = 0; TPButton.ZIndex = 20; TPButton.Parent = PopupFrame
+Instance.new("UICorner", TPButton).CornerRadius = UDim.new(0,8)
+--------------------------------------
 local FollowButton = Instance.new("TextButton")
-FollowButton.Size = UDim2.new(1,-20,0,32); FollowButton.Position = UDim2.new(0,10,0,34)
+FollowButton.Size = UDim2.new(1,-20,0,32); FollowButton.Position = UDim2.new(0,10,0,72)
 FollowButton.BackgroundColor3 = Color3.fromRGB(0,170,100)
 FollowButton.TextColor3 = TEXTW; FollowButton.Text = "📍 Seguir Jogador"
 FollowButton.Font = Enum.Font.GothamBold; FollowButton.TextSize = 13
@@ -824,7 +832,7 @@ FollowButton.BorderSizePixel = 0; FollowButton.ZIndex = 20; FollowButton.Parent 
 Instance.new("UICorner", FollowButton).CornerRadius = UDim.new(0,8)
 
 local CancelButton = Instance.new("TextButton")
-CancelButton.Size = UDim2.new(1,-20,0,18); CancelButton.Position = UDim2.new(0,10,0,69)
+CancelButton.Size = UDim2.new(1,-20,0,18); CancelButton.Position = UDim2.new(0,10,0,108)
 CancelButton.BackgroundColor3 = Color3.fromRGB(35,35,55)
 CancelButton.TextColor3 = TEXTDIM; CancelButton.Text = "Cancelar"
 CancelButton.Font = Enum.Font.Gotham; CancelButton.TextSize = 11
@@ -1020,7 +1028,19 @@ local function startFollowing(target)
         end
     end)
 end
-
+--SISTEMA DE TP ATE O JOGADOR!
+TPButton.MouseButton1Click:Connect(function()
+    if not selectedPlayer then return end
+    local myChar = lp.Character
+    local tChar = selectedPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local tRoot = tChar and tChar:FindFirstChild("HumanoidRootPart")
+    if myRoot and tRoot then
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(0, 0, 3)
+    end
+    PopupFrame.Visible = false
+end)
+------------------------------
 FollowButton.MouseButton1Click:Connect(function()
     if selectedPlayer then startFollowing(selectedPlayer); PopupFrame.Visible=false end
 end)
