@@ -1,4 +1,4 @@
--- MENU UNIFICADO | HUB + SEGUIR JOGADORES + SERVER SAVER + ZOAR
+-- HUB MENU | HUB + SEGUIR JOGADORES + SERVER SAVER + ZOAR
 -- Menu: Y | ESP: T | Fly: F | Noclip: N | Zoar: Z
 
 local Players = game:GetService("Players")
